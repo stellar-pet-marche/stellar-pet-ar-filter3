@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#2b1238">
+  <title>ステラペットマルシェ｜ハロウィンARカメラ</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+        "Yu Gothic", Meiryo, sans-serif;
+    }
+
+    button {
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* カメラ映像 */
+    #camera {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+      z-index: 1;
+    }
+
+    /* GitHubに置く透過フレーム画像 */
+    #frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      z-index: 2;
+    }
+
+    /* 左下の木の看板に重ねるカウントダウン */
+    #countdown {
+      position: absolute;
+      left: 4.2%;
+      top: 60.4%;
+      width: 34%;
+      z-index: 3;
+      pointer-events: none;
+      transform: rotate(-4deg);
+      text-align: center;
+      color: #fff;
+      font-weight: 900;
+      line-height: 1.18;
+      text-shadow:
+        0 2px 2px rgba(0,0,0,.9),
+        0 0 5px rgba(0,0,0,.6);
+    }
+
+    #countdown .label {
+      display: block;
+      font-size: clamp(12px, 3.2vw, 21px);
+      white-space: nowrap;
+    }
+
+    #countdown .days {
+      display: block;
+      margin-top: 5px;
+      color: #ffd42a;
+      font-size: clamp(25px, 7vw, 48px);
+      white-space: nowrap;
+      letter-spacing: .01em;
+    }
+
+    /* 撮影ボタン */
+    #controls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: max(26px, env(safe-area-inset-bottom));
+      z-index: 4;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #controls[hidden] {
+      display: none;
+    }
+
+    #shutterButton {
+      width: 82px;
+      height: 82px;
+      border-radius: 50%;
+      background: #6d2b8f;
+      border: 5px solid #fff;
+      box-shadow:
+        0 0 0 4px rgba(0,0,0,.45),
+        0 5px 18px rgba(0,0,0,.35);
+      position: relative;
+    }
+
+    #shutterButton::before {
+      content: "●";
+      color: #fff;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    button:active {
+      transform: scale(.97);
+    }
+
+    /* カメラ許可画面 */
+    .screen {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding:
+        max(24px, env(safe-area-inset-top))
+        22px
+        max(24px, env(safe-area-inset-bottom));
+      color: #fff;
+      text-align: center;
+      background:
+        radial-gradient(circle at 50% 18%, rgba(255,145,0,.24), transparent 37%),
+        linear-gradient(160deg, #4d245b, #160a20 78%);
+    }
+
+    .panel {
+      width: min(100%, 410px);
+      padding: 30px 22px;
+      border-radius: 24px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.16);
+      box-shadow: 0 18px 60px rgba(0,0,0,.35);
+    }
+
+    .panel h1 {
+      margin: 0 0 14px;
+      font-size: clamp(27px, 7vw, 36px);
+      line-height: 1.35;
+    }
+
+    .panel p {
+      margin: 0 0 22px;
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .mainButton,
+    .subButton {
+      width: 100%;
+      min-height: 54px;
+      padding: 14px 20px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+
+    .mainButton {
+      color: #fff;
+      background: #ff8a00;
+      font-size: 17px;
+    }
+
+    .subButton {
+      margin-top: 12px;
+      color: #2d173a;
+      background: #fff;
+      font-size: 15px;
+    }
+
+    #permissionGuide {
+      display: none;
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(0,0,0,.28);
+      text-align: left;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    #permissionGuide strong {
+      color: #ffd37e;
+    }
+
+    /* 撮影後プレビュー */
+    #previewScreen {
+      z-index: 20;
+      display: none;
+      flex-direction: column;
+      background: rgba(0,0,0,.95);
+    }
+
+    #previewImage {
+      max-width: 100%;
+      max-height: calc(100% - 140px);
+      object-fit: contain;
+      border-radius: 14px;
+    }
+
+    #previewActions {
+      width: min(100%, 430px);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    #saveButton,
+    #retakeButton {
+      min-height: 52px;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    #saveButton {
+      color: #251400;
+      background: #ffc63d;
+    }
+
+    #retakeButton {
+      color: #222;
+      background: #fff;
+    }
+
+    #saveNote {
+      margin: 12px 0 0;
+      max-width: 420px;
+      color: #ddd;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    #messageBar {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      left: 50%;
+      z-index: 5;
+      transform: translateX(-50%);
+      max-width: 90%;
+      padding: 8px 13px;
+      border-radius: 999px;
+      color: #fff;
+      background: rgba(0,0,0,.58);
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity .25s;
+      pointer-events: none;
+    }
+
+    #messageBar.show {
+      opacity: 1;
+    }
+
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <main id="app">
+    <video id="camera" autoplay muted playsinline></video>
+
+    <!-- index.html と同じ場所に frame.png を置いてください -->
+    <img id="frame" src="frame.png" alt="ステラペットマルシェ ハロウィンフレーム">
+
+    <div id="countdown" aria-hidden="true">
+      <span class="label">ステラペットマルシェまで</span>
+      <span class="days" id="countdownDays">あと -- 日！</span>
+    </div>
+
+    <div id="messageBar"></div>
+
+    <div id="controls" hidden>
+      <button id="shutterButton" type="button" aria-label="撮影"></button>
+    </div>
+
+    <section id="startScreen" class="screen">
+      <div class="panel">
+        <h1>🎃 ハロウィン限定<br>ARカメラ</h1>
+
+        <p>
+          「カメラを使用する」を押したあと、<br>
+          スマートフォンの確認画面で<br>
+          <strong>「許可」</strong>を選んでください。
+        </p>
+
+        <button id="startButton" class="mainButton" type="button">
+          カメラを使用する
+        </button>
+
+        <button id="retryButton" class="subButton" type="button" hidden>
+          設定変更後にもう一度試す
+        </button>
+
+        <div id="permissionGuide"></div>
+      </div>
+    </section>
+
+    <section id="previewScreen" class="screen">
+      <img id="previewImage" alt="撮影した写真">
+
+      <div id="previewActions">
+        <button id="saveButton" type="button">写真を保存</button>
+        <button id="retakeButton" type="button">撮り直す</button>
+      </div>
+
+      <p id="saveNote">
+        ※ブラウザの仕様により、iPhoneでは「写真」アプリへ無確認で直接保存することはできません。
+        保存ボタンで画像ファイルとして保存します。
+      </p>
+    </section>
+
+    <canvas id="photoCanvas"></canvas>
+  </main>
+
+  <script>
+    "use strict";
+
+    /* 開催日 */
+    const EVENT_YEAR = 2026;
+    const EVENT_MONTH = 10;
+    const EVENT_DAY = 17;
+
+    const video = document.getElementById("camera");
+    const frame = document.getElementById("frame");
+    const controls = document.getElementById("controls");
+    const startScreen = document.getElementById("startScreen");
+    const startButton = document.getElementById("startButton");
+    const retryButton = document.getElementById("retryButton");
+    const permissionGuide = document.getElementById("permissionGuide");
+    const shutterButton = document.getElementById("shutterButton");
+    const previewScreen = document.getElementById("previewScreen");
+    const previewImage = document.getElementById("previewImage");
+    const saveButton = document.getElementById("saveButton");
+    const retakeButton = document.getElementById("retakeButton");
+    const canvas = document.getElementById("photoCanvas");
+    const messageBar = document.getElementById("messageBar");
+    const countdownDays = document.getElementById("countdownDays");
+
+    let stream = null;
+    let capturedBlob = null;
+    let capturedUrl = "";
+    let isStarting = false;
+
+    function getJapanDateParts() {
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      });
+
+      const parts = formatter.formatToParts(new Date());
+      const values = {};
+
+      for (const part of parts) {
+        if (part.type !== "literal") {
+          values[part.type] = Number(part.value);
+        }
+      }
+
+      return {
+        year: values.year,
+        month: values.month,
+        day: values.day
+      };
+    }
+
+    function getDaysRemaining() {
+      const today = getJapanDateParts();
+      const todayUtc = Date.UTC(today.year, today.month - 1, today.day);
+      const eventUtc = Date.UTC(EVENT_YEAR, EVENT_MONTH - 1, EVENT_DAY);
+
+      return Math.ceil((eventUtc - todayUtc) / 86400000);
+    }
+
+    function updateCountdown() {
+      const days = getDaysRemaining();
+
+      if (days > 0) {
+        countdownDays.textContent = `あと ${days} 日！`;
+      } else if (days === 0) {
+        countdownDays.textContent = "本日開催！";
+      } else {
+        countdownDays.textContent = "開催終了";
+      }
+    }
+
+    function showMessage(text, duration = 2200) {
+      messageBar.textContent = text;
+      messageBar.classList.add("show");
+
+      clearTimeout(showMessage.timer);
+      showMessage.timer = setTimeout(() => {
+        messageBar.classList.remove("show");
+      }, duration);
+    }
+
+    function stopCamera() {
+      if (!stream) return;
+
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+      video.srcObject = null;
+    }
+
+    function setLoading(loading) {
+      isStarting = loading;
+      startButton.disabled = loading;
+      retryButton.disabled = loading;
+
+      startButton.textContent = loading
+        ? "カメラを起動しています…"
+        : "カメラを使用する";
+
+      retryButton.textContent = loading
+        ? "確認しています…"
+        : "設定変更後にもう一度試す";
+    }
+
+    function showPermissionDeniedGuide() {
+      permissionGuide.style.display = "block";
+      permissionGuide.innerHTML = `
+        <strong>カメラがブロックされています</strong><br>
+        一度「許可しない」を選んだ場合は、ブラウザ設定からカメラを許可してください。<br><br>
+
+        <strong>iPhone・Safari</strong><br>
+        アドレス欄の「ぁあ」→「Webサイトの設定」→
+        「カメラ」→「許可」<br><br>
+
+        <strong>Android・Chrome</strong><br>
+        アドレス欄左の設定アイコン→「権限」→
+        「カメラ」→「許可」<br><br>
+
+        変更後、「設定変更後にもう一度試す」を押してください。
+      `;
+
+      startButton.hidden = true;
+      retryButton.hidden = false;
+    }
+
+    function showGeneralError(message) {
+      permissionGuide.style.display = "block";
+      permissionGuide.textContent = message;
+      startButton.hidden = false;
+      retryButton.hidden = false;
+    }
+
+    async function openCamera() {
+      if (isStarting) return;
+
+      setLoading(true);
+      permissionGuide.style.display = "none";
+
+      try {
+        if (!window.isSecureContext) {
+          throw new Error("HTTPS_REQUIRED");
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("UNSUPPORTED_BROWSER");
+        }
+
+        stopCamera();
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        startScreen.style.display = "none";
+        controls.hidden = false;
+        showMessage("紫のボタンで撮影できます");
+      } catch (error) {
+        console.error("Camera error:", error);
+
+        if (
+          error.name === "NotAllowedError" ||
+          error.name === "PermissionDeniedError"
+        ) {
+          showPermissionDeniedGuide();
+        } else if (error.message === "HTTPS_REQUIRED") {
+          showGeneralError(
+            "GitHub Pagesの公開URLから開いてください。カメラはHTTPSページでのみ利用できます。"
+          );
+        } else if (error.message === "UNSUPPORTED_BROWSER") {
+          showGeneralError(
+            "SafariまたはChromeで開いてください。"
+          );
+        } else if (error.name === "NotFoundError") {
+          showGeneralError("利用できるカメラが見つかりませんでした。");
+        } else {
+          showGeneralError(
+            "カメラを起動できませんでした。ページを再読み込みして、もう一度お試しください。"
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function getCoverCrop(sourceWidth, sourceHeight, targetWidth, targetHeight) {
+      const sourceRatio = sourceWidth / sourceHeight;
+      const targetRatio = targetWidth / targetHeight;
+
+      let sx = 0;
+      let sy = 0;
+      let sw = sourceWidth;
+      let sh = sourceHeight;
+
+      if (sourceRatio > targetRatio) {
+        sw = sourceHeight * targetRatio;
+        sx = (sourceWidth - sw) / 2;
+      } else {
+        sh = sourceWidth / targetRatio;
+        sy = (sourceHeight - sh) / 2;
+      }
+
+      return { sx, sy, sw, sh };
+    }
+
+    function drawCountdownOnCanvas(context, outputWidth, outputHeight) {
+      const days = getDaysRemaining();
+
+      const centerX = outputWidth * 0.205;
+      const labelY = outputHeight * 0.625;
+      const daysY = outputHeight * 0.665;
+
+      context.save();
+      context.translate(centerX, 0);
+      context.rotate(-4 * Math.PI / 180);
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.shadowColor = "rgba(0,0,0,.85)";
+      context.shadowBlur = 4;
+      context.shadowOffsetY = 2;
+
+      context.fillStyle = "#ffffff";
+      context.font =
+        '900 31px -apple-system, BlinkMacSystemFont, "Yu Gothic", Meiryo, sans-serif';
+      context.fillText("ステラペットマルシェまで", 0, labelY);
+
+      context.fillStyle = "#ffd42a";
+      context.font =
+        '900 58px -apple-system, BlinkMacSystemFont, "Yu Gothic", Meiryo, sans-serif';
+
+      if (days > 0) {
+        context.fillText(`あと ${days} 日！`, 0, daysY);
+      } else if (days === 0) {
+        context.fillText("本日開催！", 0, daysY);
+      } else {
+        context.fillText("開催終了", 0, daysY);
+      }
+
+      context.restore();
+    }
+
+    function canvasToBlob(canvasElement) {
+      return new Promise((resolve, reject) => {
+        canvasElement.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error("画像作成エラー"));
+        }, "image/jpeg", 0.95);
+      });
+    }
+
+    async function takePhoto() {
+      if (!video.videoWidth || !video.videoHeight) {
+        showMessage("カメラの準備ができていません");
+        return;
+      }
+
+      if (!frame.complete || frame.naturalWidth === 0) {
+        showMessage("frame.pngを読み込めませんでした");
+        return;
+      }
+
+      const outputWidth = 1080;
+      const outputHeight = 1920;
+      const context = canvas.getContext("2d");
+
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      context.clearRect(0, 0, outputWidth, outputHeight);
+
+      const crop = getCoverCrop(
+        video.videoWidth,
+        video.videoHeight,
+        outputWidth,
+        outputHeight
+      );
+
+      context.drawImage(
+        video,
+        crop.sx,
+        crop.sy,
+        crop.sw,
+        crop.sh,
+        0,
+        0,
+        outputWidth,
+        outputHeight
+      );
+
+      context.drawImage(frame, 0, 0, outputWidth, outputHeight);
+      drawCountdownOnCanvas(context, outputWidth, outputHeight);
+
+      try {
+        capturedBlob = await canvasToBlob(canvas);
+
+        if (capturedUrl) {
+          URL.revokeObjectURL(capturedUrl);
+        }
+
+        capturedUrl = URL.createObjectURL(capturedBlob);
+        previewImage.src = capturedUrl;
+        previewScreen.style.display = "flex";
+      } catch (error) {
+        console.error(error);
+        showMessage("写真の作成に失敗しました");
+      }
+    }
+
+    function getFileName() {
+      const now = new Date();
+      const stamp =
+        now.getFullYear() +
+        String(now.getMonth() + 1).padStart(2, "0") +
+        String(now.getDate()).padStart(2, "0") +
+        "-" +
+        String(now.getHours()).padStart(2, "0") +
+        String(now.getMinutes()).padStart(2, "0") +
+        String(now.getSeconds()).padStart(2, "0");
+
+      return `stellar-pet-marche-${stamp}.jpg`;
+    }
+
+    /*
+      共有画面は使わず、画像ファイルを直接ダウンロードします。
+      Android/Chrome等では通常そのまま端末に保存されます。
+      iPhone/Safariはブラウザ仕様上「写真」アプリへ自動書き込みはできず、
+      ダウンロードとして保存される場合があります。
+    */
+    function savePhoto() {
+      if (!capturedBlob || !capturedUrl) return;
+
+      const link = document.createElement("a");
+      link.href = capturedUrl;
+      link.download = getFileName();
+      link.style.display = "none";
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      showMessage("写真を保存しました");
+    }
+
+    function retakePhoto() {
+      previewScreen.style.display = "none";
+      previewImage.removeAttribute("src");
+
+      if (capturedUrl) {
+        URL.revokeObjectURL(capturedUrl);
+      }
+
+      capturedUrl = "";
+      capturedBlob = null;
+    }
+
+    startButton.addEventListener("click", openCamera);
+    retryButton.addEventListener("click", openCamera);
+    shutterButton.addEventListener("click", takePhoto);
+    saveButton.addEventListener("click", savePhoto);
+    retakeButton.addEventListener("click", retakePhoto);
+
+    window.addEventListener("pagehide", stopCamera);
+
+    updateCountdown();
+  </script>
+</body>
+</html>
