@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>ステラペットマルシェ｜ハロウィンARカメラ</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",Meiryo,sans-serif}
+button{border:0;font:inherit;cursor:pointer}
+#app{position:fixed;inset:0;overflow:hidden;background:#000}
+#camera{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+#frame{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;z-index:2}
+#countdownPanel{position:absolute;left:4%;top:59%;width:33.5%;height:10%;z-index:3;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;transform:rotate(-3deg);color:#fff;text-align:center;font-weight:900;text-shadow:0 2px 2px rgba(0,0,0,.95)}
+#countdownTitle{width:100%;padding:0 5%;font-size:clamp(10px,2.8vw,19px);line-height:1.08;white-space:nowrap}
+#countdownDays{width:100%;margin-top:5px;color:#ffd633;font-size:clamp(22px,6.2vw,44px);line-height:1;white-space:nowrap}
+#controls{position:absolute;left:0;right:0;bottom:max(24px,env(safe-area-inset-bottom));z-index:4;display:flex;justify-content:center}
+#controls[hidden]{display:none}
+#shutterButton{width:82px;height:82px;border-radius:50%;background:#6d2b8f;border:5px solid #fff;box-shadow:0 0 0 4px rgba(0,0,0,.45);color:#fff;font-size:32px}
+.screen{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;text-align:center;background:linear-gradient(160deg,#4d245b,#160a20 78%)}
+.panel{width:min(100%,410px);padding:30px 22px;border-radius:24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16)}
+.panel h1{margin:0 0 14px;font-size:clamp(27px,7vw,36px);line-height:1.35}
+.panel p{margin:0 0 22px;font-size:16px;line-height:1.75}
+.mainButton,.subButton{width:100%;min-height:54px;padding:14px 20px;border-radius:999px;font-weight:800}
+.mainButton{color:#fff;background:#ff8a00;font-size:17px}
+.subButton{margin-top:12px;color:#2d173a;background:#fff;font-size:15px}
+#permissionGuide{display:none;margin-top:18px;padding:16px;border-radius:16px;background:rgba(0,0,0,.28);text-align:left;font-size:14px;line-height:1.7}
+#previewScreen{z-index:20;display:none;flex-direction:column;background:rgba(0,0,0,.95)}
+#previewImage{max-width:100%;max-height:calc(100% - 150px);object-fit:contain;border-radius:14px}
+#previewActions{width:min(100%,430px);display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+#saveButton,#retakeButton{min-height:52px;border-radius:999px;padding:12px 16px;font-size:16px;font-weight:800}
+#saveButton{color:#251400;background:#ffc63d}
+#retakeButton{color:#222;background:#fff}
+#saveToast{position:fixed;left:50%;bottom:max(110px,calc(env(safe-area-inset-bottom) + 85px));z-index:50;transform:translate(-50%,18px);width:min(calc(100% - 34px),380px);display:flex;align-items:center;gap:12px;padding:14px 17px;border-radius:18px;background:rgba(15,15,18,.94);color:#fff;opacity:0;visibility:hidden;transition:.22s}
+#saveToast.show{opacity:1;visibility:visible;transform:translate(-50%,0)}
+#saveToastIcon{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:#42c95a;font-size:27px;font-weight:900}
+#messageBar{position:absolute;top:12px;left:50%;z-index:5;transform:translateX(-50%);padding:8px 13px;border-radius:999px;color:#fff;background:rgba(0,0,0,.58);font-size:13px;opacity:0}
+#messageBar.show{opacity:1}
+canvas{display:none}
+</style>
+</head>
+<body>
+<main id="app">
+<video id="camera" autoplay muted playsinline></video>
+<img id="frame" src="frame.png" alt="ステラペットマルシェ ハロウィンフレーム">
+<div id="countdownPanel"><div id="countdownTitle">ステラペットマルシェまで</div><div id="countdownDays">あと -- 日！</div></div>
+<div id="messageBar"></div>
+<div id="controls" hidden><button id="shutterButton" type="button">●</button></div>
+
+<section id="startScreen" class="screen">
+<div class="panel">
+<h1>🎃 ハロウィン限定<br>ARカメラ</h1>
+<p>「カメラを使用する」を押したあと、<br>スマートフォンの確認画面で<br><strong>「許可」</strong>を選んでください。</p>
+<button id="startButton" class="mainButton" type="button">カメラを使用する</button>
+<button id="retryButton" class="subButton" type="button" hidden>設定変更後にもう一度試す</button>
+<div id="permissionGuide"></div>
+</div>
+</section>
+
+<section id="previewScreen" class="screen">
+<img id="previewImage" alt="撮影した写真">
+<div id="previewActions">
+<button id="saveButton" type="button">写真を保存</button>
+<button id="retakeButton" type="button">撮り直す</button>
+</div>
+</section>
+
+<div id="saveToast"><div id="saveToastIcon">✓</div><div><strong>保存しました！</strong><br><span style="font-size:12px;color:#b7f3c0">端末の保存先をご確認ください</span></div></div>
+<canvas id="photoCanvas"></canvas>
+</main>
+
+<script>
+"use strict";
+const EVENT_YEAR=2026,EVENT_MONTH=10,EVENT_DAY=17;
+const video=document.getElementById("camera"),frame=document.getElementById("frame"),controls=document.getElementById("controls"),startScreen=document.getElementById("startScreen"),startButton=document.getElementById("startButton"),retryButton=document.getElementById("retryButton"),permissionGuide=document.getElementById("permissionGuide"),shutterButton=document.getElementById("shutterButton"),previewScreen=document.getElementById("previewScreen"),previewImage=document.getElementById("previewImage"),saveButton=document.getElementById("saveButton"),retakeButton=document.getElementById("retakeButton"),canvas=document.getElementById("photoCanvas"),messageBar=document.getElementById("messageBar"),countdownTitle=document.getElementById("countdownTitle"),countdownDays=document.getElementById("countdownDays"),saveToast=document.getElementById("saveToast");
+let stream=null,capturedBlob=null,capturedUrl="",isStarting=false,toastTimer=null;
+
+function getJapanDateParts(){
+ const f=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Tokyo",year:"numeric",month:"2-digit",day:"2-digit"});
+ const v={}; for(const p of f.formatToParts(new Date())) if(p.type!=="literal") v[p.type]=Number(p.value);
+ return {year:v.year,month:v.month,day:v.day};
+}
+function getDaysRemaining(){
+ const t=getJapanDateParts();
+ return Math.ceil((Date.UTC(EVENT_YEAR,EVENT_MONTH-1,EVENT_DAY)-Date.UTC(t.year,t.month-1,t.day))/86400000);
+}
+function updateCountdown(){
+ const d=getDaysRemaining();
+ if(d>0){countdownTitle.textContent="ステラペットマルシェまで";countdownDays.textContent=`あと ${d} 日！`}
+ else if(d===0){countdownTitle.textContent="ステラペットマルシェ";countdownDays.textContent="本日開催！"}
+ else{countdownTitle.textContent="ステラペットマルシェ";countdownDays.textContent="開催終了"}
+}
+function showMessage(t){messageBar.textContent=t;messageBar.classList.add("show");setTimeout(()=>messageBar.classList.remove("show"),2200)}
+function showSaveToast(){clearTimeout(toastTimer);saveToast.classList.add("show");if(navigator.vibrate)navigator.vibrate(45);toastTimer=setTimeout(()=>saveToast.classList.remove("show"),2600)}
+function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null}}
+function setLoading(x){isStarting=x;startButton.disabled=x;retryButton.disabled=x;startButton.textContent=x?"カメラを起動しています…":"カメラを使用する"}
+function showPermissionDeniedGuide(){
+ permissionGuide.style.display="block";
+ permissionGuide.innerHTML="<strong>カメラがブロックされています</strong><br>ブラウザ設定からカメラを許可してください。<br><br><strong>iPhone・Safari</strong><br>アドレス欄の「ぁあ」→「Webサイトの設定」→「カメラ」→「許可」<br><br><strong>Android・Chrome</strong><br>アドレス欄左の設定アイコン→「権限」→「カメラ」→「許可」";
+ startButton.hidden=true;retryButton.hidden=false;
+}
+async function openCamera(){
+ if(isStarting)return; setLoading(true); permissionGuide.style.display="none";
+ try{
+  if(!window.isSecureContext) throw new Error("HTTPS_REQUIRED");
+  stopCamera();
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}});
+  video.srcObject=stream; await video.play(); startScreen.style.display="none"; controls.hidden=false; showMessage("紫のボタンで撮影できます");
+ }catch(e){
+  if(e.name==="NotAllowedError"||e.name==="PermissionDeniedError") showPermissionDeniedGuide();
+  else{permissionGuide.style.display="block";permissionGuide.textContent="カメラを起動できませんでした。GitHub PagesのHTTPS公開URLから開いてください。"}
+ }finally{setLoading(false)}
+}
+function crop(sw,sh,tw,th){
+ const sr=sw/sh,tr=tw/th; let sx=0,sy=0,cw=sw,ch=sh;
+ if(sr>tr){cw=sh*tr;sx=(sw-cw)/2}else{ch=sw/tr;sy=(sh-ch)/2}
+ return {sx,sy,cw,ch};
+}
+function drawCountdown(ctx,w,h){
+ const d=getDaysRemaining(),x=w*.205,titleY=h*.615,daysY=h*.655;
+ ctx.save();ctx.translate(x,0);ctx.rotate(-3*Math.PI/180);ctx.textAlign="center";ctx.textBaseline="middle";ctx.shadowColor="rgba(0,0,0,.9)";ctx.shadowBlur=4;ctx.fillStyle="#fff";ctx.font='900 27px "Yu Gothic",Meiryo,sans-serif';
+ if(d>0){ctx.fillText("ステラペットマルシェまで",0,titleY);ctx.fillStyle="#ffd633";ctx.font='900 57px "Yu Gothic",Meiryo,sans-serif';ctx.fillText(`あと ${d} 日！`,0,daysY)}
+ else if(d===0){ctx.fillText("ステラペットマルシェ",0,titleY);ctx.fillStyle="#ffd633";ctx.font='900 53px "Yu Gothic",Meiryo,sans-serif';ctx.fillText("本日開催！",0,daysY)}
+ else{ctx.fillText("ステラペットマルシェ",0,titleY);ctx.fillStyle="#ffd633";ctx.font='900 48px "Yu Gothic",Meiryo,sans-serif';ctx.fillText("開催終了",0,daysY)}
+ ctx.restore();
+}
+function toBlob(c){return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("画像作成エラー")),"image/jpeg",.95))}
+async function takePhoto(){
+ if(!video.videoWidth||!frame.complete){showMessage("カメラまたはフレームの準備中です");return}
+ const w=1080,h=1920,ctx=canvas.getContext("2d");canvas.width=w;canvas.height=h;
+ const c=crop(video.videoWidth,video.videoHeight,w,h);
+ ctx.drawImage(video,c.sx,c.sy,c.cw,c.ch,0,0,w,h);ctx.drawImage(frame,0,0,w,h);drawCountdown(ctx,w,h);
+ capturedBlob=await toBlob(canvas); if(capturedUrl)URL.revokeObjectURL(capturedUrl); capturedUrl=URL.createObjectURL(capturedBlob); previewImage.src=capturedUrl; previewScreen.style.display="flex";
+}
+function fileName(){const n=new Date();return `stellar-pet-marche-${n.getFullYear()}${String(n.getMonth()+1).padStart(2,"0")}${String(n.getDate()).padStart(2,"0")}-${String(n.getHours()).padStart(2,"0")}${String(n.getMinutes()).padStart(2,"0")}${String(n.getSeconds()).padStart(2,"0")}.jpg`}
+function savePhoto(){if(!capturedUrl)return;const a=document.createElement("a");a.href=capturedUrl;a.download=fileName();document.body.appendChild(a);a.click();a.remove();showSaveToast()}
+function retakePhoto(){previewScreen.style.display="none";if(capturedUrl)URL.revokeObjectURL(capturedUrl);capturedUrl="";capturedBlob=null}
+startButton.addEventListener("click",openCamera);retryButton.addEventListener("click",openCamera);shutterButton.addEventListener("click",takePhoto);saveButton.addEventListener("click",savePhoto);retakeButton.addEventListener("click",retakePhoto);window.addEventListener("pagehide",stopCamera);updateCountdown();
+</script>
+</body>
+</html>
