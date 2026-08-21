@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#24102f">
+  <title>ステラペットマルシェ｜ハロウィンARカメラ</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+        "Yu Gothic", Meiryo, sans-serif;
+    }
+
+    button {
+      border: 0;
+      font: inherit;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #camera {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+      z-index: 1;
+    }
+
+    #frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+      z-index: 2;
+    }
+
+    #controls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: max(20px, env(safe-area-inset-bottom));
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+    }
+
+    #controls[hidden] {
+      display: none;
+    }
+
+    .round-button {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: rgba(20, 20, 20, 0.72);
+      font-size: 25px;
+    }
+
+    #shutterButton {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #fff;
+      border: 6px solid rgba(255, 255, 255, 0.55);
+      box-shadow:
+        0 0 0 4px rgba(0, 0, 0, 0.6),
+        0 5px 18px rgba(0, 0, 0, 0.35);
+    }
+
+    button:active {
+      transform: scale(0.97);
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding:
+        max(24px, env(safe-area-inset-top))
+        22px
+        max(24px, env(safe-area-inset-bottom));
+      color: #fff;
+      text-align: center;
+      background:
+        radial-gradient(circle at 50% 15%, rgba(255, 146, 22, 0.26), transparent 38%),
+        linear-gradient(160deg, #4b2357, #160a20 75%);
+    }
+
+    .panel {
+      width: min(100%, 410px);
+      padding: 30px 22px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    .panel h1 {
+      margin: 0 0 14px;
+      font-size: clamp(27px, 7vw, 36px);
+      line-height: 1.35;
+    }
+
+    .panel p {
+      margin: 0 0 24px;
+      font-size: 16px;
+      line-height: 1.75;
+    }
+
+    .main-button,
+    .sub-button {
+      width: 100%;
+      min-height: 54px;
+      padding: 14px 20px;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+
+    .main-button {
+      color: #fff;
+      background: #ff8a00;
+      font-size: 17px;
+    }
+
+    .sub-button {
+      margin-top: 12px;
+      color: #2d173a;
+      background: #fff;
+      font-size: 15px;
+    }
+
+    #permissionGuide {
+      display: none;
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(0, 0, 0, 0.28);
+      text-align: left;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    #permissionGuide strong {
+      color: #ffd37e;
+    }
+
+    #previewScreen {
+      z-index: 20;
+      display: none;
+      flex-direction: column;
+      background: rgba(0, 0, 0, 0.94);
+    }
+
+    #previewImage {
+      max-width: 100%;
+      max-height: calc(100% - 100px);
+      object-fit: contain;
+      border-radius: 14px;
+    }
+
+    #previewActions {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    #saveButton,
+    #retakeButton {
+      padding: 13px 20px;
+      border-radius: 999px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    #saveButton {
+      color: #fff;
+      background: #ff8a00;
+    }
+
+    #retakeButton {
+      color: #222;
+      background: #fff;
+    }
+
+    #messageBar {
+      position: absolute;
+      top: max(12px, env(safe-area-inset-top));
+      left: 50%;
+      z-index: 5;
+      max-width: 90%;
+      padding: 8px 13px;
+      border-radius: 999px;
+      transform: translateX(-50%);
+      color: #fff;
+      background: rgba(0, 0, 0, 0.58);
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+    }
+
+    #messageBar.show {
+      opacity: 1;
+    }
+
+    canvas {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <main id="app">
+    <video id="camera" autoplay muted playsinline></video>
+
+    <!-- index.htmlと同じ場所に、透過PNGの frame.png を置いてください -->
+    <img id="frame" src="frame.png" alt="ステラペットマルシェ限定フレーム">
+
+    <div id="messageBar"></div>
+
+    <div id="controls" hidden>
+      <button id="switchCameraButton" class="round-button" type="button" aria-label="カメラ切替">↻</button>
+      <button id="shutterButton" type="button" aria-label="撮影"></button>
+      <button id="helpButton" class="round-button" type="button" aria-label="使い方">?</button>
+    </div>
+
+    <section id="startScreen" class="screen">
+      <div class="panel">
+        <h1>🎃 ハロウィン限定<br>ARカメラ</h1>
+
+        <p>
+          「カメラを使用する」を押すと、<br>
+          スマートフォンの確認画面が開きます。<br>
+          そこで<strong>「許可」</strong>を選んでください。
+        </p>
+
+        <button id="startButton" class="main-button" type="button">
+          カメラを使用する
+        </button>
+
+        <button id="retryButton" class="sub-button" type="button" hidden>
+          設定変更後にもう一度試す
+        </button>
+
+        <div id="permissionGuide"></div>
+      </div>
+    </section>
+
+    <section id="previewScreen" class="screen">
+      <img id="previewImage" alt="撮影した写真">
+
+      <div id="previewActions">
+        <button id="saveButton" type="button">写真を保存</button>
+        <button id="retakeButton" type="button">撮り直す</button>
+      </div>
+    </section>
+
+    <canvas id="photoCanvas"></canvas>
+  </main>
+
+  <script>
+    "use strict";
+
+    const video = document.getElementById("camera");
+    const frame = document.getElementById("frame");
+    const controls = document.getElementById("controls");
+    const startScreen = document.getElementById("startScreen");
+    const startButton = document.getElementById("startButton");
+    const retryButton = document.getElementById("retryButton");
+    const permissionGuide = document.getElementById("permissionGuide");
+    const switchCameraButton = document.getElementById("switchCameraButton");
+    const shutterButton = document.getElementById("shutterButton");
+    const helpButton = document.getElementById("helpButton");
+    const previewScreen = document.getElementById("previewScreen");
+    const previewImage = document.getElementById("previewImage");
+    const saveButton = document.getElementById("saveButton");
+    const retakeButton = document.getElementById("retakeButton");
+    const canvas = document.getElementById("photoCanvas");
+    const messageBar = document.getElementById("messageBar");
+
+    let stream = null;
+    let facingMode = "environment";
+    let capturedPhoto = "";
+    let isStarting = false;
+
+    function showMessage(text, duration = 2200) {
+      messageBar.textContent = text;
+      messageBar.classList.add("show");
+
+      clearTimeout(showMessage.timer);
+      showMessage.timer = setTimeout(() => {
+        messageBar.classList.remove("show");
+      }, duration);
+    }
+
+    function stopCamera() {
+      if (!stream) return;
+
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+      video.srcObject = null;
+    }
+
+    function setLoading(loading) {
+      isStarting = loading;
+      startButton.disabled = loading;
+      retryButton.disabled = loading;
+
+      startButton.textContent = loading
+        ? "カメラを起動しています…"
+        : "カメラを使用する";
+
+      retryButton.textContent = loading
+        ? "確認しています…"
+        : "設定変更後にもう一度試す";
+    }
+
+    function showPermissionDeniedGuide() {
+      permissionGuide.style.display = "block";
+      permissionGuide.innerHTML = `
+        <strong>カメラがブロックされています</strong><br>
+        一度「許可しない」を選んだ場合は、ブラウザの設定を変更してください。<br><br>
+
+        <strong>iPhone・Safari</strong><br>
+        アドレス欄の「ぁあ」→「Webサイトの設定」→
+        「カメラ」→「許可」<br><br>
+
+        <strong>Android・Chrome</strong><br>
+        アドレス欄左の設定アイコン→「権限」→
+        「カメラ」→「許可」<br><br>
+
+        変更後、「設定変更後にもう一度試す」を押してください。
+      `;
+
+      startButton.hidden = true;
+      retryButton.hidden = false;
+    }
+
+    function showGeneralError(message) {
+      permissionGuide.style.display = "block";
+      permissionGuide.textContent = message;
+      startButton.hidden = false;
+      retryButton.hidden = false;
+    }
+
+    function updateMirror() {
+      video.style.transform =
+        facingMode === "user" ? "scaleX(-1)" : "none";
+    }
+
+    async function openCamera() {
+      if (isStarting) return;
+
+      setLoading(true);
+      permissionGuide.style.display = "none";
+
+      try {
+        if (!window.isSecureContext) {
+          throw new Error("HTTPS_REQUIRED");
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("UNSUPPORTED_BROWSER");
+        }
+
+        stopCamera();
+
+        /*
+          まだ許可状態が未選択なら、ここでスマートフォン標準の
+          カメラ許可画面が表示されます。
+        */
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        });
+
+        video.srcObject = stream;
+        await video.play();
+
+        updateMirror();
+        startScreen.style.display = "none";
+        controls.hidden = false;
+        showMessage("中央の白いボタンで撮影できます");
+      } catch (error) {
+        console.error("Camera error:", error);
+
+        if (
+          error.name === "NotAllowedError" ||
+          error.name === "PermissionDeniedError"
+        ) {
+          showPermissionDeniedGuide();
+        } else if (error.message === "HTTPS_REQUIRED") {
+          showGeneralError(
+            "GitHub Pagesの公開URLから開いてください。カメラはHTTPSページでのみ利用できます。"
+          );
+        } else if (error.message === "UNSUPPORTED_BROWSER") {
+          showGeneralError(
+            "SafariまたはChromeで開いてください。このブラウザはカメラに対応していません。"
+          );
+        } else if (error.name === "NotFoundError") {
+          showGeneralError("利用できるカメラが見つかりませんでした。");
+        } else if (error.name === "NotReadableError") {
+          showGeneralError(
+            "ほかのカメラアプリを閉じてから、もう一度お試しください。"
+          );
+        } else {
+          showGeneralError(
+            "カメラを起動できませんでした。ページを再読み込みして、もう一度お試しください。"
+          );
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    async function switchCamera() {
+      facingMode =
+        facingMode === "environment" ? "user" : "environment";
+
+      await openCamera();
+    }
+
+    function getCoverCrop(
+      sourceWidth,
+      sourceHeight,
+      targetWidth,
+      targetHeight
+    ) {
+      const sourceRatio = sourceWidth / sourceHeight;
+      const targetRatio = targetWidth / targetHeight;
+
+      let sx = 0;
+      let sy = 0;
+      let sw = sourceWidth;
+      let sh = sourceHeight;
+
+      if (sourceRatio > targetRatio) {
+        sw = sourceHeight * targetRatio;
+        sx = (sourceWidth - sw) / 2;
+      } else {
+        sh = sourceWidth / targetRatio;
+        sy = (sourceHeight - sh) / 2;
+      }
+
+      return { sx, sy, sw, sh };
+    }
+
+    function takePhoto() {
+      if (!video.videoWidth || !video.videoHeight) {
+        showMessage("カメラの準備ができていません");
+        return;
+      }
+
+      if (!frame.complete || frame.naturalWidth === 0) {
+        showMessage("frame.pngを読み込めませんでした");
+        return;
+      }
+
+      const outputWidth = 1080;
+      const outputHeight = 1920;
+      const context = canvas.getContext("2d");
+
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      context.clearRect(0, 0, outputWidth, outputHeight);
+
+      const crop = getCoverCrop(
+        video.videoWidth,
+        video.videoHeight,
+        outputWidth,
+        outputHeight
+      );
+
+      context.save();
+
+      if (facingMode === "user") {
+        context.translate(outputWidth, 0);
+        context.scale(-1, 1);
+      }
+
+      context.drawImage(
+        video,
+        crop.sx,
+        crop.sy,
+        crop.sw,
+        crop.sh,
+        0,
+        0,
+        outputWidth,
+        outputHeight
+      );
+
+      context.restore();
+      context.drawImage(frame, 0, 0, outputWidth, outputHeight);
+
+      capturedPhoto = canvas.toDataURL("image/jpeg", 0.94);
+      previewImage.src = capturedPhoto;
+      previewScreen.style.display = "flex";
+    }
+
+    function savePhoto() {
+      if (!capturedPhoto) return;
+
+      const link = document.createElement("a");
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, 19);
+
+      link.href = capturedPhoto;
+      link.download =
+        `stellar-pet-marche-halloween-${timestamp}.jpg`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function retakePhoto() {
+      previewScreen.style.display = "none";
+      previewImage.removeAttribute("src");
+      capturedPhoto = "";
+    }
+
+    function showHelp() {
+      alert(
+        "使い方\n\n" +
+        "1. 「カメラを使用する」を押します。\n" +
+        "2. スマートフォンの確認画面で「許可」を押します。\n" +
+        "3. ワンちゃんを中央に合わせます。\n" +
+        "4. 白い丸ボタンで撮影します。\n" +
+        "5. 「写真を保存」を押します。"
+      );
+    }
+
+    startButton.addEventListener("click", openCamera);
+    retryButton.addEventListener("click", openCamera);
+    switchCameraButton.addEventListener("click", switchCamera);
+    shutterButton.addEventListener("click", takePhoto);
+    saveButton.addEventListener("click", savePhoto);
+    retakeButton.addEventListener("click", retakePhoto);
+    helpButton.addEventListener("click", showHelp);
+    window.addEventListener("pagehide", stopCamera);
+  </script>
+</body>
+</html>
