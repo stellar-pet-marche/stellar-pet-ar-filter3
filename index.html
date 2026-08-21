@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>ステラペットマルシェ ARフォトスポット</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000;font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",Meiryo,sans-serif}
+button{border:0;font:inherit;cursor:pointer}
+#app{position:fixed;inset:0;background:#000;overflow:hidden}
+#camera{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+#frameWrap{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;pointer-events:none}
+#frame{width:100%;height:100%;object-fit:contain;pointer-events:none}
+#controls{position:absolute;left:0;right:0;bottom:max(22px,env(safe-area-inset-bottom));z-index:4;display:flex;justify-content:center;gap:12px;padding:0 16px}
+#controls[hidden]{display:none}
+.controlBtn{min-width:124px;min-height:52px;border-radius:999px;padding:12px 18px;font-weight:800;font-size:16px;box-shadow:0 5px 18px rgba(0,0,0,.35)}
+#switchBtn{background:#6d3da5;color:#fff}#shootBtn{background:#fff;color:#1d2230}
+.screen{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:24px;color:#fff;text-align:center;background:linear-gradient(160deg,#0b1b3b,#23112f 82%)}
+.card{width:min(100%,430px);padding:30px 22px;border-radius:24px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16)}
+.card h1{margin:0 0 14px;font-size:clamp(22px,5.8vw,31px);line-height:1.25;white-space:nowrap}
+.card p{margin:0 0 22px;font-size:15px;line-height:1.75}
+#startBtn,#retryBtn{width:100%;min-height:54px;border-radius:999px;padding:14px 20px;font-weight:800}
+#startBtn{background:#f28c28;color:#fff;font-size:17px}#retryBtn{margin-top:12px;background:#fff;color:#24142d}
+#permissionGuide{display:none;margin-top:18px;padding:16px;border-radius:16px;background:rgba(0,0,0,.28);text-align:left;font-size:13px;line-height:1.7}
+#preview{z-index:20;display:none;flex-direction:column;background:rgba(0,0,0,.95)}
+#previewImg{max-width:100%;max-height:calc(100% - 155px);object-fit:contain;border-radius:14px}
+#previewBtns{width:min(100%,430px);display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+#saveBtn,#retakeBtn{min-height:52px;border-radius:999px;padding:12px 16px;font-size:16px;font-weight:800}
+#saveBtn{background:#ffc640;color:#21170a}#retakeBtn{background:#fff;color:#222}
+#toast{position:fixed;left:50%;top:50%;z-index:50;transform:translate(-50%,-45%);width:min(calc(100% - 34px),360px);padding:18px 20px;border-radius:20px;background:rgba(15,15,18,.96);color:#fff;display:flex;align-items:center;gap:12px;opacity:0;visibility:hidden;transition:.22s}
+#toast.show{opacity:1;visibility:visible;transform:translate(-50%,-50%)}
+#toastIcon{width:42px;height:42px;border-radius:50%;background:#42c95a;display:grid;place-items:center;font-size:27px;font-weight:900}
+#message{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:5;padding:8px 13px;border-radius:999px;color:#fff;background:rgba(0,0,0,.58);font-size:13px;opacity:0}
+#message.show{opacity:1}
+canvas{display:none}
+</style>
+</head>
+<body>
+<main id="app">
+<video id="camera" autoplay muted playsinline></video>
+<div id="frameWrap"><img id="frame" src="frame.png" alt="ステラペットマルシェ ARフレーム"></div>
+<div id="message"></div>
+<div id="controls" hidden>
+<button id="switchBtn" class="controlBtn">↻ カメラ切替</button>
+<button id="shootBtn" class="controlBtn">📷 撮影</button>
+</div>
+
+<section id="startScreen" class="screen">
+<div class="card">
+<h1>ステラペットマルシェ ARフォトスポット</h1>
+<p>「カメラを起動する」を押したあと、<br>ブラウザの確認画面でカメラの使用を<br><strong>「許可」</strong>してください。</p>
+<button id="startBtn">カメラを起動する</button>
+<button id="retryBtn" hidden>設定変更後にもう一度試す</button>
+<div id="permissionGuide"></div>
+</div>
+</section>
+
+<section id="preview" class="screen">
+<img id="previewImg" alt="撮影した写真">
+<div id="previewBtns">
+<button id="saveBtn">写真を保存</button>
+<button id="retakeBtn">撮り直す</button>
+</div>
+</section>
+
+<div id="toast"><div id="toastIcon">✓</div><div><strong>保存処理を開始しました！</strong><br><span style="font-size:12px;color:#b7f3c0">端末の保存先をご確認ください</span></div></div>
+<canvas id="canvas"></canvas>
+</main>
+
+<script>
+const camera=document.getElementById("camera"),frame=document.getElementById("frame"),controls=document.getElementById("controls"),startScreen=document.getElementById("startScreen"),startBtn=document.getElementById("startBtn"),retryBtn=document.getElementById("retryBtn"),permissionGuide=document.getElementById("permissionGuide"),switchBtn=document.getElementById("switchBtn"),shootBtn=document.getElementById("shootBtn"),preview=document.getElementById("preview"),previewImg=document.getElementById("previewImg"),saveBtn=document.getElementById("saveBtn"),retakeBtn=document.getElementById("retakeBtn"),canvas=document.getElementById("canvas"),toast=document.getElementById("toast"),message=document.getElementById("message");
+let stream=null,facing="environment",capturedUrl="",capturedBlob=null,toastTimer=null,starting=false;
+
+function showMessage(t){message.textContent=t;message.classList.add("show");setTimeout(()=>message.classList.remove("show"),2200)}
+function showToast(){clearTimeout(toastTimer);toast.classList.add("show");if(navigator.vibrate)navigator.vibrate(45);toastTimer=setTimeout(()=>toast.classList.remove("show"),2600)}
+function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;camera.srcObject=null}}
+function denied(){permissionGuide.style.display="block";permissionGuide.innerHTML='<strong>カメラがブロックされています</strong><br>ブラウザ設定からカメラを「許可」に変更してください。';startBtn.hidden=true;retryBtn.hidden=false}
+
+async function openCamera(){
+ if(starting)return; starting=true;
+ try{
+  if(!window.isSecureContext)throw new Error("HTTPS");
+  stopCamera();
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}}});
+  camera.srcObject=stream; await camera.play();
+  camera.style.transform=facing==="user"?"scaleX(-1)":"none";
+  startScreen.style.display="none"; controls.hidden=false; showMessage("撮影ボタンで写真を撮れます");
+ }catch(e){
+  if(e.name==="NotAllowedError"||e.name==="PermissionDeniedError")denied();
+  else{permissionGuide.style.display="block";permissionGuide.textContent="カメラを起動できませんでした。GitHub PagesのHTTPS公開URLから開いてください。"}
+ }finally{starting=false}
+}
+
+function coverCrop(sw,sh,tw,th){
+ const sr=sw/sh,tr=tw/th;let sx=0,sy=0,cw=sw,ch=sh;
+ if(sr>tr){cw=sh*tr;sx=(sw-cw)/2}else{ch=sw/tr;sy=(sh-ch)/2}
+ return{sx,sy,cw,ch}
+}
+
+function drawContain(ctx,img,tw,th){
+ const ir=img.naturalWidth/img.naturalHeight,tr=tw/th;let dw,dh,dx,dy;
+ if(ir>tr){dw=tw;dh=tw/ir;dx=0;dy=(th-dh)/2}else{dh=th;dw=th*ir;dy=0;dx=(tw-dw)/2}
+ ctx.drawImage(img,dx,dy,dw,dh)
+}
+
+function toBlob(c){return new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error()),"image/jpeg",.95))}
+
+async function takePhoto(){
+ if(!camera.videoWidth||!frame.complete)return;
+ const w=1080,h=1920,ctx=canvas.getContext("2d");canvas.width=w;canvas.height=h;
+ const c=coverCrop(camera.videoWidth,camera.videoHeight,w,h);
+ if(facing==="user"){ctx.save();ctx.translate(w,0);ctx.scale(-1,1);ctx.drawImage(camera,c.sx,c.sy,c.cw,c.ch,0,0,w,h);ctx.restore()}
+ else ctx.drawImage(camera,c.sx,c.sy,c.cw,c.ch,0,0,w,h);
+ drawContain(ctx,frame,w,h);
+ capturedBlob=await toBlob(canvas);
+ if(capturedUrl)URL.revokeObjectURL(capturedUrl);
+ capturedUrl=URL.createObjectURL(capturedBlob);previewImg.src=capturedUrl;preview.style.display="flex";
+}
+
+function savePhoto(){
+ if(!capturedUrl)return;
+ const a=document.createElement("a");a.href=capturedUrl;a.download="stellar-pet-marche-"+Date.now()+".jpg";document.body.appendChild(a);a.click();a.remove();
+ saveBtn.textContent="✓ 保存しました";saveBtn.style.background="#46c463";saveBtn.style.color="#fff";saveBtn.disabled=true;showToast();
+ setTimeout(()=>{saveBtn.textContent="写真を保存";saveBtn.style.background="";saveBtn.style.color="";saveBtn.disabled=false},2200)
+}
+
+function retake(){preview.style.display="none";if(capturedUrl)URL.revokeObjectURL(capturedUrl);capturedUrl="";capturedBlob=null}
+startBtn.onclick=openCamera;retryBtn.onclick=openCamera;switchBtn.onclick=async()=>{facing=facing==="environment"?"user":"environment";await openCamera()};shootBtn.onclick=takePhoto;saveBtn.onclick=savePhoto;retakeBtn.onclick=retake;window.addEventListener("pagehide",stopCamera);
+</script>
+</body>
+</html>
