@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#08162f">
+<title>ステラペットマルシェ ARフォトスポット</title>
+
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{
+  margin:0;width:100%;height:100%;overflow:hidden;background:#000;
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif
+}
+button{border:0;font:inherit;cursor:pointer;touch-action:manipulation}
+#app{position:fixed;inset:0;background:#000;overflow:hidden}
+
+/* フレーム比率に合わせて中央配置 */
+#stage{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  overflow:hidden;background:#000
+}
+#camera{
+  position:absolute;inset:0;width:100%;height:100%;
+  object-fit:cover;background:#000;z-index:1
+}
+#frameCanvas{
+  position:absolute;inset:0;width:100%;height:100%;
+  z-index:2;pointer-events:none;background:transparent
+}
+
+/* 撮影UI */
+#controls{
+  position:absolute;left:0;right:0;bottom:max(20px,env(safe-area-inset-bottom));
+  z-index:5;display:flex;justify-content:center;gap:12px;padding:0 14px
+}
+#controls[hidden]{display:none}
+.controlBtn{
+  min-width:120px;min-height:50px;padding:12px 18px;border-radius:999px;
+  font-size:15px;font-weight:800;box-shadow:0 5px 18px rgba(0,0,0,.38)
+}
+#switchBtn{background:#6d3da5;color:#fff}
+#shootBtn{background:#fff;color:#1d2230}
+
+/* 初期画面 */
+.screen{
+  position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+  padding:max(22px,env(safe-area-inset-top)) 18px max(22px,env(safe-area-inset-bottom));
+  color:#fff;text-align:center;
+  background:radial-gradient(circle at 50% 14%,rgba(255,177,65,.18),transparent 34%),
+             linear-gradient(160deg,#0b1b3b,#23112f 82%)
+}
+.card{
+  width:min(100%,430px);padding:28px 20px;border-radius:24px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 18px 60px rgba(0,0,0,.35)
+}
+.title1,.title2{display:block;white-space:nowrap;font-weight:900;line-height:1.2}
+.title1{font-size:clamp(22px,5.7vw,31px)}
+.title2{margin-top:6px;font-size:clamp(25px,6.4vw,34px);color:#ffd46a}
+.card p{margin:18px 0 22px;font-size:15px;line-height:1.75}
+#startBtn,#retryBtn{
+  width:100%;min-height:54px;padding:14px 20px;border-radius:999px;font-weight:800
+}
+#startBtn{background:#f28c28;color:#fff;font-size:17px}
+#retryBtn{margin-top:12px;background:#fff;color:#24142d}
+#permissionGuide{
+  display:none;margin-top:18px;padding:15px;border-radius:16px;
+  background:rgba(0,0,0,.28);text-align:left;font-size:13px;line-height:1.7
+}
+
+/* 撮影後 */
+#preview{
+  z-index:30;display:none;flex-direction:column;background:rgba(0,0,0,.96)
+}
+#previewImg{
+  max-width:100%;max-height:calc(100dvh - 150px);object-fit:contain;
+  border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.45)
+}
+#previewBtns{
+  width:min(100%,430px);display:grid;grid-template-columns:1fr 1fr;
+  gap:10px;margin-top:14px
+}
+#saveBtn,#retakeBtn{
+  min-height:50px;padding:12px 14px;border-radius:999px;font-size:15px;font-weight:800
+}
+#saveBtn{background:#ffc640;color:#21170a}
+#retakeBtn{background:#fff;color:#222}
+
+/* 保存完了表示 */
+#toast{
+  position:fixed;left:50%;top:50%;z-index:60;transform:translate(-50%,-45%);
+  width:min(calc(100% - 34px),360px);padding:18px 20px;border-radius:20px;
+  background:rgba(15,15,18,.97);color:#fff;display:flex;align-items:center;gap:12px;
+  opacity:0;visibility:hidden;transition:.22s
+}
+#toast.show{opacity:1;visibility:visible;transform:translate(-50%,-50%)}
+#toastIcon{
+  width:42px;height:42px;flex:0 0 42px;border-radius:50%;background:#42c95a;
+  display:grid;place-items:center;font-size:27px;font-weight:900
+}
+#message{
+  position:absolute;top:max(10px,env(safe-area-inset-top));left:50%;
+  transform:translateX(-50%);z-index:7;padding:8px 13px;border-radius:999px;
+  color:#fff;background:rgba(0,0,0,.62);font-size:13px;opacity:0;transition:.25s
+}
+#message.show{opacity:1}
+canvas.hidden{display:none}
+</style>
+</head>
+
+<body>
+<main id="app">
+
+<div id="stage">
+  <video id="camera" autoplay muted playsinline></video>
+  <!-- frame.png の中央黒部分をJSで透明化して描画 -->
+  <canvas id="frameCanvas"></canvas>
+</div>
+
+<div id="message"></div>
+
+<div id="controls" hidden>
+  <button id="switchBtn" class="controlBtn" type="button">↻ カメラ切替</button>
+  <button id="shootBtn" class="controlBtn" type="button">📷 撮影</button>
+</div>
+
+<section id="startScreen" class="screen">
+  <div class="card">
+    <span class="title1">ステラペットマルシェ</span>
+    <span class="title2">ARフォトスポット</span>
+
+    <p>
+      「カメラを起動する」を押したあと、<br>
+      ブラウザの確認画面でカメラの使用を<br>
+      <strong>「許可」</strong>してください。
+    </p>
+
+    <button id="startBtn" type="button">カメラを起動する</button>
+    <button id="retryBtn" type="button" hidden>設定変更後にもう一度試す</button>
+
+    <div id="permissionGuide"></div>
+  </div>
+</section>
+
+<section id="preview" class="screen">
+  <img id="previewImg" alt="撮影した写真">
+  <div id="previewBtns">
+    <button id="saveBtn" type="button">写真を保存</button>
+    <button id="retakeBtn" type="button">撮り直す</button>
+  </div>
+</section>
+
+<div id="toast" role="status" aria-live="polite">
+  <div id="toastIcon">✓</div>
+  <div>
+    <strong>保存しました！</strong><br>
+    <span style="font-size:12px;color:#b7f3c0">端末の保存先をご確認ください</span>
+  </div>
+</div>
+
+<canvas id="photoCanvas" class="hidden"></canvas>
+
+</main>
+
+<script>
+"use strict";
+
+const FRAME_URL = "frame.png?v=68335";
+
+const stage = document.getElementById("stage");
+const camera = document.getElementById("camera");
+const frameCanvas = document.getElementById("frameCanvas");
+const controls = document.getElementById("controls");
+const startScreen = document.getElementById("startScreen");
+const startBtn = document.getElementById("startBtn");
+const retryBtn = document.getElementById("retryBtn");
+const permissionGuide = document.getElementById("permissionGuide");
+const switchBtn = document.getElementById("switchBtn");
+const shootBtn = document.getElementById("shootBtn");
+const preview = document.getElementById("preview");
+const previewImg = document.getElementById("previewImg");
+const saveBtn = document.getElementById("saveBtn");
+const retakeBtn = document.getElementById("retakeBtn");
+const photoCanvas = document.getElementById("photoCanvas");
+const toast = document.getElementById("toast");
+const message = document.getElementById("message");
+
+let stream = null;
+let facingMode = "environment";
+let processedFrame = null;
+let frameW = 0;
+let frameH = 0;
+let capturedBlob = null;
+let capturedUrl = "";
+let starting = false;
+let toastTimer = null;
+
+function note(text, ms=2200){
+  message.textContent = text;
+  message.classList.add("show");
+  clearTimeout(note.timer);
+  note.timer = setTimeout(()=>message.classList.remove("show"),ms);
+}
+
+function showToast(){
+  clearTimeout(toastTimer);
+  toast.classList.add("show");
+  if(navigator.vibrate) navigator.vibrate(45);
+  toastTimer = setTimeout(()=>toast.classList.remove("show"),2600);
+}
+
+function stopCamera(){
+  if(!stream) return;
+  stream.getTracks().forEach(t=>t.stop());
+  stream = null;
+  camera.srcObject = null;
+}
+
+function fitStage(){
+  if(!frameW || !frameH) return;
+
+  const imageRatio = frameW / frameH;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const viewportRatio = vw / vh;
+
+  let w,h;
+
+  if(viewportRatio > imageRatio){
+    h = vh;
+    w = h * imageRatio;
+  }else{
+    w = vw;
+    h = w / imageRatio;
+  }
+
+  stage.style.width = w + "px";
+  stage.style.height = h + "px";
+}
+
+window.addEventListener("resize",fitStage);
+
+function showPermissionGuide(){
+  permissionGuide.style.display = "block";
+  permissionGuide.innerHTML = `
+    <strong>カメラがブロックされています</strong><br>
+    ブラウザ設定から、このサイトのカメラを「許可」に変更してください。<br><br>
+
+    <strong>iPhone・Safari</strong><br>
+    アドレス欄の「ぁあ」→「Webサイトの設定」→「カメラ」→「許可」<br><br>
+
+    <strong>Android・Chrome</strong><br>
+    アドレス欄左の設定アイコン→「権限」→「カメラ」→「許可」
+  `;
+
+  startBtn.hidden = true;
+  retryBtn.hidden = false;
+}
+
+/*
+  このフレーム専用処理。
+  画像中央にある黒い撮影窓だけを、中央点から連続している暗色領域として
+  flood fill で透明化します。
+*/
+async function prepareFrame(){
+  const img = new Image();
+  img.src = FRAME_URL;
+  await img.decode();
+
+  frameW = img.naturalWidth;
+  frameH = img.naturalHeight;
+
+  frameCanvas.width = frameW;
+  frameCanvas.height = frameH;
+
+  const ctx = frameCanvas.getContext("2d",{willReadFrequently:true});
+  ctx.clearRect(0,0,frameW,frameH);
+  ctx.drawImage(img,0,0);
+
+  const image = ctx.getImageData(0,0,frameW,frameH);
+  const d = image.data;
+
+  const total = frameW * frameH;
+  const visited = new Uint8Array(total);
+  const queue = new Int32Array(total);
+
+  let head = 0;
+  let tail = 0;
+
+  /*
+    この画像では中央の黒窓が画像の約43%高さ付近に確実に存在します。
+  */
+  const seedX = Math.floor(frameW * 0.50);
+  const seedY = Math.floor(frameH * 0.43);
+  const seed = seedY * frameW + seedX;
+
+  queue[tail++] = seed;
+  visited[seed] = 1;
+
+  function isWindowPixel(i){
+    const p = i * 4;
+    const r = d[p];
+    const g = d[p+1];
+    const b = d[p+2];
+
+    /*
+      中央窓はほぼ黒。
+      周囲の濃紺背景を誤って抜かないため閾値を低めに設定。
+    */
+    return r < 42 && g < 42 && b < 42;
+  }
+
+  while(head < tail){
+    const i = queue[head++];
+
+    if(!isWindowPixel(i)) continue;
+
+    d[i*4+3] = 0;
+
+    const x = i % frameW;
+    const y = (i / frameW) | 0;
+
+    if(x > 0){
+      const n = i - 1;
+      if(!visited[n]){visited[n]=1;queue[tail++]=n;}
+    }
+    if(x < frameW-1){
+      const n = i + 1;
+      if(!visited[n]){visited[n]=1;queue[tail++]=n;}
+    }
+    if(y > 0){
+      const n = i - frameW;
+      if(!visited[n]){visited[n]=1;queue[tail++]=n;}
+    }
+    if(y < frameH-1){
+      const n = i + frameW;
+      if(!visited[n]){visited[n]=1;queue[tail++]=n;}
+    }
+  }
+
+  ctx.putImageData(image,0,0);
+
+  processedFrame = await new Promise((resolve,reject)=>{
+    frameCanvas.toBlob(blob=>{
+      if(!blob){ reject(new Error("フレーム処理に失敗しました")); return; }
+
+      const tmp = new Image();
+      tmp.onload = ()=>resolve(tmp);
+      tmp.onerror = reject;
+      tmp.src = URL.createObjectURL(blob);
+    },"image/png");
+  });
+
+  fitStage();
+}
+
+async function openCamera(){
+  if(starting) return;
+  starting = true;
+  permissionGuide.style.display = "none";
+
+  try{
+    if(!window.isSecureContext) throw new Error("HTTPS_REQUIRED");
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      throw new Error("UNSUPPORTED");
+    }
+
+    if(!processedFrame) await prepareFrame();
+
+    stopCamera();
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{
+        facingMode:{ideal:facingMode},
+        width:{ideal:1920},
+        height:{ideal:1080}
+      }
+    });
+
+    camera.srcObject = stream;
+    await camera.play();
+
+    camera.style.transform =
+      facingMode === "user" ? "scaleX(-1)" : "none";
+
+    fitStage();
+    startScreen.style.display = "none";
+    controls.hidden = false;
+
+    note("撮影ボタンで写真を撮れます");
+
+  }catch(e){
+    console.error(e);
+
+    if(e.name === "NotAllowedError" || e.name === "PermissionDeniedError"){
+      showPermissionGuide();
+    }else{
+      permissionGuide.style.display = "block";
+      permissionGuide.textContent =
+        "カメラを起動できませんでした。GitHub PagesのHTTPS公開URLからSafariまたはChromeで開いてください。";
+    }
+  }finally{
+    starting = false;
+  }
+}
+
+function getCoverCrop(sw,sh,tw,th){
+  const sr = sw/sh;
+  const tr = tw/th;
+
+  let sx=0,sy=0,cw=sw,ch=sh;
+
+  if(sr > tr){
+    cw = sh * tr;
+    sx = (sw-cw)/2;
+  }else{
+    ch = sw / tr;
+    sy = (sh-ch)/2;
+  }
+
+  return {sx,sy,cw,ch};
+}
+
+function canvasToBlob(c){
+  return new Promise((resolve,reject)=>{
+    c.toBlob(
+      blob=>blob ? resolve(blob) : reject(new Error("画像作成エラー")),
+      "image/png"
+    );
+  });
+}
+
+async function takePhoto(){
+  if(!camera.videoWidth || !processedFrame){
+    note("カメラまたはフレームの準備中です");
+    return;
+  }
+
+  /*
+    元フレーム1086×1536と同じ縦横比で保存。
+    フレーム上下を切りません。
+  */
+  const outputWidth = 1440;
+  const outputHeight = Math.round(outputWidth * (frameH/frameW));
+
+  photoCanvas.width = outputWidth;
+  photoCanvas.height = outputHeight;
+
+  const ctx = photoCanvas.getContext("2d",{alpha:true});
+  ctx.clearRect(0,0,outputWidth,outputHeight);
+
+  const crop = getCoverCrop(
+    camera.videoWidth,
+    camera.videoHeight,
+    outputWidth,
+    outputHeight
+  );
+
+  if(facingMode === "user"){
+    ctx.save();
+    ctx.translate(outputWidth,0);
+    ctx.scale(-1,1);
+
+    ctx.drawImage(
+      camera,
+      crop.sx,crop.sy,crop.cw,crop.ch,
+      0,0,outputWidth,outputHeight
+    );
+
+    ctx.restore();
+  }else{
+    ctx.drawImage(
+      camera,
+      crop.sx,crop.sy,crop.cw,crop.ch,
+      0,0,outputWidth,outputHeight
+    );
+  }
+
+  /*
+    透明化済みフレームをカメラ写真の上へ合成。
+  */
+  ctx.drawImage(
+    processedFrame,
+    0,0,outputWidth,outputHeight
+  );
+
+  capturedBlob = await canvasToBlob(photoCanvas);
+
+  if(capturedUrl) URL.revokeObjectURL(capturedUrl);
+
+  capturedUrl = URL.createObjectURL(capturedBlob);
+  previewImg.src = capturedUrl;
+  preview.style.display = "flex";
+}
+
+function savePhoto(){
+  if(!capturedUrl) return;
+
+  const a = document.createElement("a");
+  a.href = capturedUrl;
+  a.download = "stellar-pet-marche-" + Date.now() + ".png";
+  a.style.display = "none";
+
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  saveBtn.textContent = "✓ 保存しました";
+  saveBtn.style.background = "#46c463";
+  saveBtn.style.color = "#fff";
+  saveBtn.disabled = true;
+
+  showToast();
+
+  setTimeout(()=>{
+    saveBtn.textContent = "写真を保存";
+    saveBtn.style.background = "";
+    saveBtn.style.color = "";
+    saveBtn.disabled = false;
+  },2200);
+}
+
+function retakePhoto(){
+  preview.style.display = "none";
+  previewImg.removeAttribute("src");
+
+  if(capturedUrl) URL.revokeObjectURL(capturedUrl);
+
+  capturedUrl = "";
+  capturedBlob = null;
+}
+
+startBtn.addEventListener("click",openCamera);
+retryBtn.addEventListener("click",openCamera);
+
+switchBtn.addEventListener("click",async()=>{
+  facingMode =
+    facingMode === "environment" ? "user" : "environment";
+
+  await openCamera();
+});
+
+shootBtn.addEventListener("click",takePhoto);
+saveBtn.addEventListener("click",savePhoto);
+retakeBtn.addEventListener("click",retakePhoto);
+
+window.addEventListener("pagehide",stopCamera);
+
+/* ページ表示時に先にフレームを透明化 */
+prepareFrame().catch(console.error);
+</script>
+</body>
+</html>
